@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#eeeadd">
+  <meta name="description" content="一只认真骑车的鹈鹕，一场不赶时间的海岸旅行。进入可互动的 3D 海岸世界。">
+  <title>鹈鹕海岸骑行俱乐部 · Pelican Coastal Club</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%231e514e'/%3E%3Ccircle cx='27' cy='25' r='13' fill='%23fff4dc'/%3E%3Cpath d='M32 23L58 33L32 36Z' fill='%23ef8951'/%3E%3Ccircle cx='30' cy='23' r='2' fill='%2324312f'/%3E%3Cpath d='M18 34Q12 57 41 49L31 34' fill='%23fff4dc'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="experience">
+    <div id="scene" aria-label="可拖动旋转的鹈鹕骑自行车 3D 海岸场景"></div>
+    <div class="wash" aria-hidden="true"></div>
+    <header class="topbar">
+      <a href="./index.html" class="brand" aria-label="鹈鹕海岸骑行俱乐部首页"><span class="brand-icon"><svg viewBox="0 0 40 40"><path d="M12 31c-5-9-1-16 4-17-3-8 7-12 11-6l-3 4 11 5-13 2c0 6 5 9 4 12Z" fill="currentColor"/><circle cx="23" cy="10" r="1" fill="#f6f1e5"/></svg></span><span>PELICAN<span class="brand-sub">COASTAL CLUB</span></span></a>
+      <div class="header-center"><span class="live-dot"></span> 此刻，适合兜风 <span class="sep">/</span> COASTLINE 001</div>
+      <button class="about-btn" id="aboutButton">关于这趟旅行 <span>↗</span></button>
+    </header>
+    <section class="hero">
+      <div class="eyebrow"><span class="tiny-sun">✳</span> A LITTLE RIDE. A LITTLE JOY.</div>
+      <h1>不赶路，<br>只赶<span class="accent">海风。</span></h1>
+      <p>生活偶尔很重，今天轻一点。<br>跟着鹈鹕先生，把烦恼骑成海风。</p>
+      <button id="rideButton" class="ride-button"><span class="play-mark">↗</span> 一起去兜风 <span class="button-rule"></span><span class="button-en">LET’S RIDE</span></button>
+      <div class="hero-note"><span class="small-line"></span> 不需要目的地，也能出发。</div>
+    </section>
+    <aside class="weather-badge"><span id="weatherSymbol">☀</span><div><b id="weatherTitle">海岸晴日</b><small id="weatherSub">微风 · 好心情不限量</small></div></aside>
+    <div class="scene-label"><span class="crosshair">+</span><div>MR. PELICAN<span>首席兜风体验官</span></div></div>
+    <div class="drag-hint" id="dragHint"><svg viewBox="0 0 24 24"><path d="M8 11V5a2 2 0 014 0v5m0-2a2 2 0 014 0v3m0-1a2 2 0 014 0v6c0 4-3 6-6 6h-1c-3 0-4-2-5-4l-3-5a2 2 0 013-2l1 1"/></svg> 拖动探索视角 <span>·</span> 滚轮缩放</div>
+    <div class="toolbar" aria-label="骑行控制台">
+      <div class="play-group"><button id="playButton" class="circle-button primary" aria-label="暂停骑行" title="暂停 / 继续（空格）"><svg id="playIcon" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg></button><div class="ride-status"><b id="rideState">正在兜风</b><small><span id="distance">0.00</span> km 的好心情</small></div></div>
+      <div class="toolbar-divider"></div>
+      <div class="speed-group"><div class="control-label">骑行节奏 <span><b id="speedValue">18</b> km/h</span></div><input id="speed" type="range" min="4" max="36" value="18" aria-label="骑行速度"><div class="range-labels"><span>慢慢来</span><span>追上风</span></div></div>
+      <div class="toolbar-divider desktop-divider"></div>
+      <div class="view-group"><span class="control-label">看看世界</span><div class="segmented" role="group" aria-label="镜头视角"><button class="selected" data-camera="coast" aria-pressed="true">海岸</button><button data-camera="follow" aria-pressed="false">跟骑</button><button data-camera="detail" aria-pressed="false">特写</button></div></div>
+      <div class="toolbar-divider desktop-divider"></div>
+      <div class="tools"><button id="themeButton" class="tool-button" title="切换晴日 / 日落" aria-label="切换到日落"><svg viewBox="0 0 24 24"><path d="M3 17h18M5 21h14M7 14a5 5 0 0110 0M12 2v3M3 7l2 2M21 7l-2 2"/></svg><span id="themeLabel">日落</span></button><button id="bellButton" class="tool-button" title="打铃（B）" aria-label="打一下自行车铃"><svg viewBox="0 0 24 24"><path d="M4 16h16L18 12V9a6 6 0 00-12 0v3zM9 20h6M12 1v2"/></svg><span>叮叮</span></button><button id="soundButton" class="tool-button" title="海风环境音" aria-label="开启环境音" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 9h4l5-4v14l-5-4H3zM16 8c3 2 3 6 0 8M19 5c5 4 5 10 0 14"/></svg><span id="soundLabel">海风</span></button><button id="photoButton" class="tool-button" title="保存一张海岸明信片" aria-label="保存明信片"><svg viewBox="0 0 24 24"><path d="M3 6h5l2-3h4l2 3h5v14H3z"/><circle cx="12" cy="12" r="4"/></svg><span>留影</span></button></div>
+    </div>
+    <footer><span>把日子过成，一段沿海公路。</span><span>MADE FOR THE JOY OF GOING <i>↗</i></span></footer>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <div id="loading"><div class="loading-bird">✳</div><b>海风正在赶来</b><span>PREPARING YOUR LITTLE ESCAPE</span></div>
+    <div id="error" hidden><h2>海风还没吹进来</h2><p>请使用支持 WebGL 的现代浏览器，并开启硬件加速。</p><button onclick="location.reload()">重新出发</button></div>
+    <dialog id="aboutDialog"><button class="close-dialog" id="closeDialog" aria-label="关闭">×</button><span class="eyebrow">A SMALL ESCAPE FROM THE EVERYDAY</span><h2>今天的目的地，<br>是好心情。</h2><p>一只鹈鹕，一辆单车，一条永远走不完的沿海公路。这是一个为「鹈鹕骑自行车」做的小小 3D 世界。</p><p>试着绕到它身后，看脚蹼踩住踏板；或放慢速度，看海面闪光。这里没有任务，也没有终点。</p><div class="shortcut-list"><span>空格 <b>暂停 / 继续</b></span><span>B <b>打一下铃</b></span><span>C <b>切换镜头</b></span><span>拖动 / 滚轮 <b>旋转 / 缩放</b></span></div><small>实时 3D · 本地离线可用 · 无需安装<br>提示：环境音需主动开启；留影会保存 PNG 明信片。</small></dialog>
+  </main>
+  <script src="vendor/three.min.js"></script><script src="app.js"></script>
+</body>
+</html>
