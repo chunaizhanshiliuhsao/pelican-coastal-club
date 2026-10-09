@@ -7,7 +7,7 @@
   const state = { running: !reducedMotion, speed: 18, sunset: false, sound: false, camera: 'coast', distance: 0, time: 0, phase: 0, cinematic: false };
   const scene = new T.Scene();
   scene.background = new T.Color('#e9ebd8');
-  scene.fog = new T.FogExp2('#e9ebd8', .012);
+  scene.fog = new T.FogExp2('#e9ebd8', .009);
   let renderer;
   try { renderer = new T.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true, powerPreference: 'high-performance' }); }
   catch (_) { $('error').hidden = false; return; }
@@ -48,18 +48,115 @@
   const markings=group(), moving=[];
   for(let i=-15;i<=15;i++) { const g=group(markings,[i*4,0,0]);box(g,M.ivory,[0,.027,0],[1.8,.008,.07]);moving.push({g,span:124}); }
   const curbMats=[mat('#c6c3a6'),mat('#ddd8bc')];
-  for(let i=-40;i<40;i++)for(const z of [-2.7,2.7])box(scene,curbMats[(i+40)%2],[i*2,.05,z],[1.97,.16,.2]);
-  const grainsGeo=new T.IcosahedronGeometry(.014,0), grains=new T.InstancedMesh(grainsGeo,mat('#a7aa90'),1300),dummy=new T.Object3D();
-  for(let i=0;i<1300;i++){dummy.position.set(rand(-55,55),.035,rand(-2.5,2.5));dummy.scale.setScalar(rand(.5,2));dummy.updateMatrix();grains.setMatrixAt(i,dummy.matrix);}scene.add(grains);
+  for(let i=-40;i<40;i++){
+    const g=group(scene,[i*2,0,0]);
+    for(const z of [-2.7,2.7])box(g,curbMats[(i+40)%2],[0,.05,z],[1.97,.16,.2]);
+    moving.push({g,span:160});
+  }
+  // Pebbles share exactly the road's world-space velocity. Recycle whole tiles
+  // beyond the visible area, rather than resetting a single stationary scatter.
+  const grainsGeo=new T.IcosahedronGeometry(.018,0),grainMat=mat('#a7aa90'),dummy=new T.Object3D();
+  const pebbleTiles=[];
+  for(let tile=-4;tile<=4;tile++){
+    const g=group(scene,[tile*32,0,0]);g.name='road-pebbles-'+tile;
+    const grains=new T.InstancedMesh(grainsGeo,grainMat,320);
+    for(let i=0;i<320;i++){
+      dummy.position.set(rand(-16,16),.035,rand(-2.5,2.5));
+      dummy.scale.set(rand(.6,1.7),rand(.3,.65),rand(.6,1.7));
+      dummy.rotation.set(0,rand(0,Math.PI*2),0);dummy.updateMatrix();grains.setMatrixAt(i,dummy.matrix);
+    }
+    grains.receiveShadow=true;g.add(grains);pebbleTiles.push(g);moving.push({g,span:288});
+  }
 
   // Animated sea: low-amplitude geometry waves with sunlight on the crests.
   const seaUniforms={time:{value:0},colorA:{value:new T.Color('#5daaa0')},colorB:{value:new T.Color('#c4dfbd')}};
   const seaMaterial=new T.ShaderMaterial({uniforms:seaUniforms,vertexShader:`varying vec3 vWorld; uniform float time; void main(){vec3 p=position; p.z+=sin(p.x*.22+time*.6)*.06+sin(p.y*.35+p.x*.13+time*.85)*.07;vec4 w=modelMatrix*vec4(p,1.);vWorld=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`,fragmentShader:`varying vec3 vWorld; uniform float time; uniform vec3 colorA; uniform vec3 colorB; void main(){float w=sin(vWorld.x*.47+vWorld.z*2.8+sin(vWorld.x*.09+time*.3)*2.+time*.55);float w2=sin(vWorld.x*.18-vWorld.z*4.2+time*.7);float glint=pow(max(0.,w*w2),16.)*.35;float depth=smoothstep(-90.,-4.,vWorld.z);vec3 c=mix(colorB,colorA,depth*.6+.25)+glint;float haze=smoothstep(20.,135.,length(vWorld.xz));c=mix(c,vec3(.81,.86,.75),haze*.7);gl_FragColor=vec4(c,1.); #include <tonemapping_fragment> #include <colorspace_fragment> }`.replaceAll(' #include','\n#include')});
   const ocean=mesh(new T.PlaneGeometry(400,210,90,70),seaMaterial);ocean.rotation.x=-Math.PI/2;ocean.position.set(0,-.14,-109);ocean.castShadow=false;ocean.receiveShadow=false;
   for(let i=0;i<9;i++){const foam=box(scene,M.foam,[0,-.08+i*.003,-5.3-i*.3],[340,.018,.035]);foam.material=M.foam;}
-  const distant=group();
-  const hillMat=mat('#98b4a0');
-  for(let i=0;i<10;i++){const m=ell(distant,hillMat,[rand(-130,130),rand(-2,-.2),rand(-110,-65)],[rand(12,28),rand(2,6),rand(6,13)]);m.castShadow=false;}
+  // Periodic terrain meshes meet at identical heights and normals. Several
+  // depth layers, moving at the same physical speed, produce real parallax.
+  const distant=group(),mountainTiles=[];
+  const mountainLayers=[
+    {length:160,z:-108,width:35,height:15,phase:1.3,low:'#9cafaa',high:'#bac5b5'},
+    {length:144,z:-78,width:30,height:11,phase:3.2,low:'#789987',high:'#a1b199'},
+    {length:128,z:-51,width:24,height:7.5,phase:.5,low:'#638c72',high:'#94a87b'}
+  ];
+  const tau=Math.PI*2;
+  function mountainHeight(x,t,layer){
+    const a=x/layer.length*tau,p=layer.phase;
+    const ridge=.57+.22*Math.sin(3*a+p)+.13*Math.cos(5*a-p)+.075*Math.sin(9*a+p*.7)+.025*Math.cos(17*a);
+    const shoulder=Math.pow(Math.max(0,Math.sin(Math.PI*t)),1.15);
+    const folds=.9+.1*Math.sin(t*12+a*6+p);
+    return -.25+(1.1+layer.height*ridge)*shoulder*folds;
+  }
+  function mountainGeometry(layer){
+    const nx=128,nz=22,positions=[],colors=[],indices=[];
+    const dark=new T.Color(layer.low),light=new T.Color(layer.high),color=new T.Color();
+    for(let j=0;j<=nz;j++)for(let i=0;i<=nx;i++){
+      const x=(i/nx-.5)*layer.length,t=j/nz,y=mountainHeight(x,t,layer);
+      positions.push(x,y,(t-.5)*layer.width);
+      const facet=.045*Math.sin(i/nx*tau*17+j*1.9),mix=T.MathUtils.clamp(y/layer.height*.7+facet,.03,.9);
+      color.copy(dark).lerp(light,mix);colors.push(color.r,color.g,color.b);
+    }
+    for(let j=0;j<nz;j++)for(let i=0;i<nx;i++){const a=j*(nx+1)+i,b=a+1,c=a+nx+1,d=c+1;indices.push(a,c,b,b,c,d);}
+    const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(positions,3));geo.setAttribute('color',new T.Float32BufferAttribute(colors,3));geo.setIndex(indices);geo.computeVertexNormals();
+    // Average the two boundary normals so the repeat has no lighting seam.
+    const n=geo.attributes.normal;
+    for(let j=0;j<=nz;j++){const a=j*(nx+1),b=a+nx,v=new T.Vector3(n.getX(a)+n.getX(b),n.getY(a)+n.getY(b),n.getZ(a)+n.getZ(b)).normalize();n.setXYZ(a,v.x,v.y,v.z);n.setXYZ(b,v.x,v.y,v.z);}
+    return geo;
+  }
+  const pavilionStone=mat('#c6c5a3'),pavilionWood=mat('#76513a'),pavilionRoof=mat('#395f56'),ridgeTrim=mat('#adc0a0'),trailMat=mat('#d5cbaa');
+  function pavilion(parent,x,t,layer){
+    const g=group(parent,[x,mountainHeight(x,t,layer)+.02,(t-.5)*layer.width]);
+    box(g,pavilionStone,[0,.13,0],[2.5,.26,2.3]);
+    for(let i=0;i<3;i++)box(g,pavilionStone,[0,.04+i*.055,1.15+(2-i)*.25],[1.2,.09+i*.075,.32]);
+    for(const px of [-.82,.82])for(const pz of [-.75,.75]){
+      rod(g,pavilionWood,[px,.25,pz],[px,1.94,pz],.065);
+      box(g,M.ivory,[px,.32,pz],[.18,.15,.18]);
+    }
+    for(const z of [-.75,.75])rod(g,pavilionWood,[-.87,1.87,z],[.87,1.87,z],.065);
+    for(const x of [-.82,.82])rod(g,pavilionWood,[x,1.87,-.8],[x,1.87,.8],.065);
+    // Four curved roof surfaces rise at the eaves, with visible ridge tiles.
+    const roofVertices=[],roofIndices=[],rings=[[1.34,1.94],[1.03,1.84],[.6,2.19],[.09,2.58]];
+    for(const [r,y] of rings)for(const [sx,sz] of [[-1,-1],[1,-1],[1,1],[-1,1]])roofVertices.push(sx*r,y,sz*r*.9);
+    for(let ring=0;ring<3;ring++)for(let side=0;side<4;side++){const a=ring*4+side,b=ring*4+(side+1)%4;roofIndices.push(a,a+4,b,b,a+4,b+4);}
+    const rg=new T.BufferGeometry();rg.setAttribute('position',new T.Float32BufferAttribute(roofVertices,3));rg.setIndex(roofIndices);rg.computeVertexNormals();mesh(rg,pavilionRoof,g);
+    for(const [sx,sz] of [[-1,-1],[1,-1],[1,1],[-1,1]])tube(g,ridgeTrim,rings.map(([r,y])=>[sx*r,y+.025,sz*r*.9]),.035,14);
+    ell(g,pavilionWood,[0,2.66,0],[.095,.15,.095]);
+    for(const x of [-.69,.69])box(g,pavilionWood,[x,.65,0],[.22,.09,1.35]);
+    rod(g,pavilionWood,[-.8,.92,-.75],[.8,.92,-.75],.035);
+    for(let i=0;i<5;i++)rod(g,pavilionWood,[-.7+i*.35,.28,-.75],[-.7+i*.35,.92,-.75],.025);
+    ell(g,M.beak,[0,1.68,0],[.1,.15,.1]);
+    return g;
+  }
+  function mountainPine(parent,x,t,layer,scale){
+    const y=mountainHeight(x,t,layer),z=(t-.5)*layer.width;
+    rod(parent,M.wood,[x,y,z],[x,y+scale*1.3,z],.045*scale);
+    for(let i=0;i<3;i++)ell(parent,i%2?M.deepGreen:M.green,[x+(i-1)*scale*.12,y+scale*(.8+i*.34),z],[scale*(.54-i*.09),scale*.23,scale*.41]);
+  }
+  mountainLayers.forEach((layer,index)=>{
+    const geometry=mountainGeometry(layer),material=mat('#ffffff',{vertexColors:true,roughness:1});
+    const template=group(distant,[0,0,layer.z]);
+    const terrain=mesh(geometry,material,template);terrain.castShadow=false;
+    if(index===2){
+      pavilion(template,-24,.81,layer);pavilion(template,35,.64,layer);
+      const path=[];
+      for(let i=0;i<=85;i++){const x=-layer.length/2+i/85*layer.length,t=.80+.035*Math.sin(x/layer.length*tau*3);path.push([x,mountainHeight(x,t,layer)+.035,(t-.5)*layer.width]);}
+      tube(template,trailMat,path,.095,180).castShadow=false;
+      for(const [x,t] of [[-24,.81],[35,.64]]){const link=[];for(let i=0;i<=12;i++){const px=x+i/12*3,pt=t+(.8-t)*i/12;link.push([px,mountainHeight(px,pt,layer)+.045,(pt-.5)*layer.width]);}tube(template,trailMat,link,.1,24).castShadow=false;}
+      for(let i=0;i<32;i++){const x=-61+i*3.9,t=.42+.35*(.5+.5*Math.sin(i*2.3));mountainPine(template,x,t,layer,.55+(i%4)*.15);}
+      for(const x of [-48,6]){
+        const t=.77,g=group(template,[x,mountainHeight(x,t,layer),(t-.5)*layer.width]);
+        box(g,M.ivory,[0,.56,0],[1.9,1.12,1.4]);const roof=mesh(new T.ConeGeometry(1.65,.72,4),M.terracotta,g);roof.position.y=1.43;roof.rotation.y=Math.PI/4;roof.scale.z=.78;
+        box(g,pavilionWood,[0,.36,.708],[.35,.72,.025]);for(const wx of [-.59,.59])box(g,M.darkTeal,[wx,.7,.71],[.28,.32,.03]);
+      }
+    }
+    batchStatic(template);
+    for(let i=-2;i<=2;i++){
+      const g=i===0?template:template.clone(true);if(i!==0)distant.add(g);g.position.x=i*layer.length;
+      g.name='mountain-layer-'+index+'-tile-'+i;mountainTiles.push(g);moving.push({g,span:layer.length*5});
+    }
+  });
 
   // Lighthouse and tiny settlement across the bay.
   const island=group(scene,[-4,0,-42]);
@@ -184,7 +281,9 @@
     parent.traverse(m=>{if(m.isMesh&&!m.isInstancedMesh){const key=m.geometry.uuid+':'+m.material.uuid;if(!batches.has(key))batches.set(key,[]);batches.get(key).push(m);}});
     batches.forEach(items=>{if(items.length<3)return;const inst=new T.InstancedMesh(items[0].geometry,items[0].material,items.length);inst.castShadow=true;inst.receiveShadow=true;items.forEach((m,i)=>{inst.setMatrixAt(i,new T.Matrix4().multiplyMatrices(inverse,m.matrixWorld));m.parent.remove(m);});parent.add(inst);});
   }
-  moving.forEach(({g})=>batchStatic(g));batchStatic(island);batchStatic(distant);
+  moving.forEach(({g})=>batchStatic(g));batchStatic(island);
+  // The lighthouse travels with the shore instead of floating over moving hills.
+  for(let i=-1;i<=1;i++){const g=i===0?island:island.clone(true);if(i!==0)scene.add(g);g.position.x=-4+i*144;moving.push({g,span:432});}
 
   // Camera presets ease into place; dragging gives the user full orbit control.
   const view={theta:.32,phi:1.3,radius:13.7,target:new T.Vector3(-1.75,1.68,0)};
